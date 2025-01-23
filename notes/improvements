@@ -1,0 +1,7 @@
+Current problem: The current action of the model doesn't change the environment itself
+|
+| Suggestion/thoughts: Add the last chosen action of the model to the prompt
+| - What it causes?
+| > A change in the environment/observation space? maybe
+|
+| https://cameronrwolfe.substack.com/p/basics-of-reinforcement-learning
