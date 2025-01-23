@@ -2,24 +2,33 @@ import gym
 import numpy as np
 from gym import spaces
 from sentence_transformers import SentenceTransformer, util
+from Functions.documents import load_documents
+from Functions.text import clear_text, remove_stopwords, split_text_into_chunks
 
 class RAGImprovementEnv(gym.Env):
-    def __init__(self, documents, model_name="all-MiniLM-L6-v2"):
+    def __init__(self, document_paths, chunk_size=500, model_name="all-MiniLM-L6-v2"):
         super(RAGImprovementEnv, self).__init__()
         
+        texts = load_documents(document_paths)
+
+        cleaned_texts = [clear_text(text) for text in texts]
+
+        no_stopwords_text = [remove_stopwords(text) for text in cleaned_texts]
+
+        joined_texts = " ".join(no_stopwords_text)
+
+        text_chunks = split_text_into_chunks(joined_texts, chunk_size=chunk_size)
+
         # Initialize document and model
-        self.documents = documents  # List of text documents
+        self.documents = text_chunks  # List of text documents
         self.model = SentenceTransformer(model_name)
         
         # Process documents into embeddings for fast similarity comparison
-        self.document_embeddings = [self.model.encode(chunk) for chunk in documents]
+        self.document_embeddings = [self.model.encode(chunk) for chunk in self.documents]
         
         # Define observation space (embedding space + similarity scores)
-        # Here we assume each embedding has a fixed dimension, e.g., 384
-        embedding_dim = self.document_embeddings[0].shape[0]
         self.observation_space = spaces.Dict({
-            "query_embedding": spaces.Box(low=-np.inf, high=np.inf, shape=(embedding_dim,), dtype=np.float32),
-            "similarities": spaces.Box(low=-1.0, high=1.0, shape=(len(documents),), dtype=np.float32)
+            "similarities": spaces.Box(low=0.0, high=1.0, shape=(len(self.documents),), dtype=np.float32)
         })
         
         # Action space is the index of document chunks
