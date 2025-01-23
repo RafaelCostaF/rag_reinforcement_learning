@@ -26,13 +26,14 @@ class RAGImprovementEnv(gym.Env):
         # Process documents into embeddings for fast similarity comparison
         self.document_embeddings = [self.model.encode(chunk) for chunk in self.documents]
         
-        # Define observation space (embedding space + similarity scores)
+        # Define observation space (similarity scores)
         self.observation_space = spaces.Dict({
-            "similarities": spaces.Box(low=0.0, high=1.0, shape=(len(self.documents),), dtype=np.float32)
+            # Similarity will be the sum of Cosine similarity and Monge-Elkan
+            "similarity": spaces.Box(low=0.0, high=2.0, shape=(len(self.documents),), dtype=np.float)
         })
         
         # Action space is the index of document chunks
-        self.action_space = spaces.Discrete(len(documents))
+        self.action_space = spaces.Discrete(len(self.documents))
         
         # Placeholder for query
         self.query_embedding = None
