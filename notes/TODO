@@ -3,8 +3,17 @@
 - - Testar resultados
 
 - Mestrado - Dissertação
-- - Definição TABELA
-- - - Adicionar métricas - OK
-- - - Algoritmos que terão na tabela - OK
-- - Adicionar campos de aplicação (jurídico etc) - OK
+
+1- - Definição TABELA - OK
+1.1- - - Adicionar métricas - OK
+1.2- - - Algoritmos que terão na tabela - OK
+1.3- - Adicionar campos de aplicação (jurídico etc) - OK
 ![alt text](exemplo tabela.png)
+
+2- - Conclusão do Gym
+2.1- - - Teste com 1 algoritmo
+2.2- - - Benchmark com 1 algoritmo
+2.3- - - Gráficos StableBaselines
+
+3- - Completar tabela
+3.1- - - Rodar com pelo menos 4 algoritmos distintos

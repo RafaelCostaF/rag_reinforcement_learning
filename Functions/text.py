@@ -1,8 +1,19 @@
 import re
 import nltk
 from nltk.corpus import stopwords
+import unicodedata
 nltk.download('stopwords')
 
+def remove_portuguese_accents(text: str) -> str:
+    """
+    Removes Portuguese accents from a given string.
+    Example:
+        "ação" -> "acao"
+        "coração" -> "coracao"
+    """
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn'
+    )
 
 def clear_text(text):
     """
@@ -22,8 +33,6 @@ def clear_text(text):
     cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
 
     return cleaned_text
-
-
 
 def remove_stopwords(text, language='portuguese'):
     """
