@@ -3,85 +3,95 @@ import numpy as np
 from gym import spaces
 from sentence_transformers import SentenceTransformer, util
 
-# State
-# Means that you know everything knowable that could determine
-# the response of the environment to a specific action
-
 class RAGImprovementEnv(gym.Env):
     def __init__(self, text_chunks, embedding_model_name="all-MiniLM-L6-v2"):
         super(RAGImprovementEnv, self).__init__()
 
-        # Initialize document and model
-        self.documents = text_chunks  # List of text documents
+        # Initialize documents and model
+        self.documents = text_chunks  # List of text chunks
         self.model = SentenceTransformer(embedding_model_name)
-        
-        # Process documents into embeddings for fast similarity comparison
-        self.document_embeddings = [self.model.encode(chunk) for chunk in self.documents]
-        
-        # Assuming document_embeddings is already computed
-        embedding_dim = len(self.document_embeddings[0])  # Dimensionality of each embedding
-        num_documents = len(self.document_embeddings)  # Number of document chunks
 
+        # Process documents into embeddings for fast similarity comparison
+        self.document_embeddings = np.array([self.model.encode(chunk) for chunk in self.documents])
+        
+        # Get embedding dimensions
+        self.embedding_dim = self.document_embeddings.shape[1]
+        self.num_documents = len(self.documents)
+
+        # Observation space: embeddings, query, similarities, and retrieval state
         self.observation_space = spaces.Dict({
             "document_embeddings": spaces.Box(
-                low=-np.inf, high=np.inf, shape=(num_documents, embedding_dim), dtype=np.float32
-            ),  # Multiple document embeddings
-            "query_embeddings": spaces.Box(
-                low=-np.inf, high=np.inf, shape=(embedding_dim,), dtype=np.float32
-            ),  # A single query embedding
+                low=-np.inf, high=np.inf, shape=(self.num_documents, self.embedding_dim), dtype=np.float32
+            ),  
+            "query_embedding": spaces.Box(
+                low=-np.inf, high=np.inf, shape=(self.embedding_dim,), dtype=np.float32
+            ),
+            "similarities": spaces.Box(
+                low=0.0, high=1.0, shape=(self.num_documents,), dtype=np.float32
+            ),
+            "retrieved_chunks_mask": spaces.MultiBinary(self.num_documents)  # Binary vector: 1 if selected, 0 otherwise
         })
 
-        # Action space is the index of document chunks PLUS stop action
-        self.action_space = spaces.Discrete(len(self.documents)+1)
-        
-        # Placeholder for query
+        # Action space: Selecting chunks (indices) + stop action
+        self.action_space = spaces.Discrete(self.num_documents + 1)
+
+        # Placeholder for query and retrieval state
         self.query_embedding = None
-        
+        self.retrieved_chunks_mask = None
+
     def reset(self, query):
+        """Reset environment with a new query."""
         self.step_count = 0
-        
-        # Encode user query as an embedding
-        self.query_embeddings = self.model.encode(query)  # Ensure consistency with observation_space
-        
-        # Compute cosine similarity between the question and all document chunks
-        cosine_similarities = [util.pytorch_cos_sim(self.query_embedding, doc_emb).item() for doc_emb in self.document_embeddings]
+        self.query_embedding = self.model.encode(query)
 
-        # Convert cosine similarity to a distance measure (1 - similarity)
-        cosine_distances = [1 - sim for sim in cosine_similarities]
+        # Compute cosine similarity scores
+        cosine_similarities = np.array([
+            util.pytorch_cos_sim(self.query_embedding, doc_emb).item() for doc_emb in self.document_embeddings
+        ])
 
-        self.similarities = np.array(cosine_distances.copy())
+        # Retrieval mask (no chunks selected at start)
+        self.retrieved_chunks_mask = np.zeros(self.num_documents, dtype=np.int8)
 
-        # Return the initial observation
         return {
-            "document_embeddings": self.document_embeddings,  # List of document embeddings
-            "query_embeddings": self.query_embeddings  # Single query embedding
+            "document_embeddings": self.document_embeddings,
+            "query_embedding": self.query_embedding,
+            "similarities": cosine_similarities,
+            "retrieved_chunks_mask": self.retrieved_chunks_mask
         }
 
     def step(self, action):
-        self.step_count +=1
+        """Take an action (select a document chunk or stop)."""
+        self.step_count += 1
+
         if action == 0:  # Stop action
             done = True
-            reward = self.compute_final_reward()  # Final reward when stopping
+            reward = self.compute_final_reward()
         else:
+            chunk_idx = action - 1  # Adjust index (1-based to 0-based)
+            if self.retrieved_chunks_mask[chunk_idx] == 1:
+                reward = -1.0  # Penalize redundant selection
+            else:
+                self.retrieved_chunks_mask[chunk_idx] = 1
+                reward = self.compute_reward(chunk_idx)
+
             done = False
-            reward = self.compute_reward(action - 1)  # Adjust index (1-based to 0-based)
-            
-        # Assume action is the index of the selected document chunk
-        selected_chunk = self.documents[action]
-    
-        return {"query_embedding": self.query_embedding, "similarities": self.similarities}, reward, done, {}
+
+        return {
+            "document_embeddings": self.document_embeddings,
+            "query_embedding": self.query_embedding,
+            "similarities": self.similarities,
+            "retrieved_chunks_mask": self.retrieved_chunks_mask
+        }, reward, done, {}
 
     def compute_reward(self, action):
-        """
-            Reward for selecting a document (e.g., cosine similarity with query).
-            Reward better for less responses
-        """
-        return self.similarities[action] * (10 - (self.step_count*2))  # Higher similarity = better reward
+        """Reward based on relevance (cosine similarity) and step efficiency."""
+        return self.similarities[action] * (10 - (self.step_count * 2))  
 
     def compute_final_reward(self):
-        """Final reward for stopping: Encourage stopping at the right time"""
-        return 10.0  # Adjust this value as needed
+        """Encourage stopping at the right time."""
+        return 10.0  
 
     def render(self, mode="human"):
         print(f"Query Embedding: {self.query_embedding}")
         print(f"Similarities: {self.similarities}")
+        print(f"Retrieved Chunks: {self.retrieved_chunks_mask}")
