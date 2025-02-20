@@ -8,61 +8,52 @@ class RAGImprovementEnv(gym.Env):
         super(RAGImprovementEnv, self).__init__()
 
         self.model = SentenceTransformer(embedding_model_name)
+        
+        self.embedding_dim = self.model.get_sentence_embedding_dimension()  # Get actual dim
+        self.max_num_documents = 300  
 
-        # Placeholder attributes (set during reset)
-        self.documents = []
-        self.document_embeddings = None
-        self.embedding_dim = 1  # Temporary value to be updated later
-        self.num_documents = 1  # Temporary value
-
-        # Define a default observation space (to be updated in reset)
         self.observation_space = spaces.Dict({
-            "document_embeddings": spaces.Box(low=-np.inf, high=np.inf, shape=(1, 1), dtype=np.float32),
-            "query_embedding": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-            "similarities": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
-            "retrieved_chunks_mask": spaces.MultiBinary(1)
+            "document_embeddings": spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_num_documents, self.embedding_dim), dtype=np.float32),  
+            "query_embedding": spaces.Box(low=-np.inf, high=np.inf, shape=(self.embedding_dim,), dtype=np.float32),  
+            "similarities": spaces.Box(low=0.0, high=1.0, shape=(self.max_num_documents,), dtype=np.float32),  
+            "retrieved_chunks_mask": spaces.MultiBinary(self.max_num_documents)  
         })
-        self.action_space = spaces.Discrete(2)  # At least 1 document + 1 stop action
 
+        
+        self.action_space = spaces.Discrete(self.max_num_documents + 1)
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
 
-        text_chunks = options["text_chunks"]
-        query = options["query"]
-        
+        text_chunks = options.get("text_chunks", [])  # Default to empty list if None
+        query = options.get("query", "")
+
         self.documents = text_chunks
         self.num_documents = len(self.documents)
-        self.document_embeddings = np.array([self.model.encode(chunk) for chunk in self.documents])
-        self.embedding_dim = self.document_embeddings.shape[1]
 
-        # Update observation and action spaces dynamically
-        self.observation_space = spaces.Dict({
-            "document_embeddings": spaces.Box(
-                low=-np.inf, high=np.inf, shape=(self.num_documents, self.embedding_dim), dtype=np.float32
-            ),
-            "query_embedding": spaces.Box(
-                low=-np.inf, high=np.inf, shape=(self.embedding_dim,), dtype=np.float32
-            ),
-            "similarities": spaces.Box(
-                low=0.0, high=1.0, shape=(self.num_documents,), dtype=np.float32
-            ),
-            "retrieved_chunks_mask": spaces.MultiBinary(self.num_documents)
-        })
-        self.action_space = spaces.Discrete(self.num_documents + 1)
+        # Check if text_chunks is empty
+        if self.num_documents == 0:
+            raise ValueError("text_chunks is empty. The environment requires at least one document.")
 
-        # Compute query embedding and similarities
-        self.query_embedding = self.model.encode(query)
-        # self.similarities = np.array([
-        #     util.pytorch_cos_sim(self.query_embedding, doc_emb).item() for doc_emb in self.document_embeddings
-        # ])
+        # Initialize document embeddings with zero padding
+        self.document_embeddings = np.zeros((self.max_num_documents, self.embedding_dim), dtype=np.float32)
         
-        self.similarities = np.array([
-            # util.pytorch_cos_sim(self.query_embedding, doc_emb) for doc_emb in self.document_embeddings
-            util.pytorch_cos_sim(self.query_embedding, doc_emb).squeeze().tolist() for doc_emb in self.document_embeddings
-        ])
+        computed_embeddings = np.array([self.model.encode(chunk) for chunk in self.documents])
 
-        # Reset retrieval state
-        self.retrieved_chunks_mask = np.zeros(self.num_documents, dtype=np.int8)
+        if computed_embeddings.size == 0:  # Avoid shape mismatch
+            raise ValueError("Computed embeddings are empty. Check if SentenceTransformer is working properly.")
+
+        self.document_embeddings[:self.num_documents, :computed_embeddings.shape[1]] = computed_embeddings
+
+        self.query_embedding = self.model.encode(query)
+
+        # Compute similarities and pad if necessary
+        self.similarities = np.zeros(self.max_num_documents, dtype=np.float32)
+        computed_similarities = np.array([
+            util.pytorch_cos_sim(self.query_embedding, doc_emb).item() for doc_emb in computed_embeddings
+        ])
+        self.similarities[:self.num_documents] = computed_similarities
+
+        self.retrieved_chunks_mask = np.zeros(self.max_num_documents, dtype=np.int8)
         self.step_count = 0
 
         return {
@@ -98,8 +89,10 @@ class RAGImprovementEnv(gym.Env):
             },
             reward,
             done,
-            False
+            False,  # No early termination
+            {}      # ✅ Return an empty dictionary instead of ''
         )
+
 
     def compute_reward(self, action):
         """Reward based on relevance (cosine similarity) and step efficiency."""
