@@ -12,7 +12,7 @@
 
 __pycache__\*
 Treinamentos/*
-notes/*
+notes/Documents/*
 Dataset/*
 Treinamentos/A2C_tensorboard_20250602/A2C_1/events.out.tfevents.1740053689.dellpc.32584.0
 Treinamentos/DQN_tensorboard_20250602/DQN_1/events.out.tfevents.1740044100.dellpc.5936.0
