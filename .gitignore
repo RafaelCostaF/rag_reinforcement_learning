@@ -1,1 +1,29 @@
-tests/*
+# Ignorar arquivos JSONL
+*.jsonl
+
+# Ignorar arquivos Parquet
+*.parquet
+
+# Ignorar arquivos CSV
+*.csv
+
+*.pkl
+*.zip
+
+__pycache__\*
+Treinamentos/*
+notes/*
+Dataset/*
+Treinamentos/A2C_tensorboard_20250602/A2C_1/events.out.tfevents.1740053689.dellpc.32584.0
+Treinamentos/DQN_tensorboard_20250602/DQN_1/events.out.tfevents.1740044100.dellpc.5936.0
+Treinamentos/PPO_tensorboard_20250602/PPO_1/events.out.tfevents.1740026736.dellpc.32100.0
+Treinamentos/PPO_tensorboard_20250602/PPO_3/events.out.tfevents.1740043777.dellpc.30396.0
+Functions/__pycache__/text.cpython-313.pyc
+Functions/__pycache__/text.cpython-311.pyc
+Functions/__pycache__/documents.cpython-313.pyc
+Functions/__pycache__/documents.cpython-311.pyc
+Functions/__pycache__/__init__.cpython-313.pyc
+Functions/__pycache__/__init__.cpython-311.pyc
+Functions/__init__.py
+__pycache__/RAGImprovementEnv.cpython-311.pyc
+__pycache__/QueryResetWrapper.cpython-311.pyc

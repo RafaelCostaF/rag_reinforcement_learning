@@ -10,7 +10,7 @@ import gymnasium as gym
 CHUNK_SIZE = 500
 
 # BEGIN = Setting texts and queries
-dataset = pd.read_parquet("./tests/dataset/Crag Splitted/crag_dataset_0.parquet")  # Documents from dataset
+dataset = pd.read_parquet("./Dataset/Crag Splitted/crag_dataset_0.parquet")  # Documents from dataset
 texts = dataset['page_result'].copy()
 queries = dataset['query'].copy()
 # END = Setting texts and queries
@@ -54,9 +54,39 @@ def make_env():
 # env = gym.vector.SyncVectorEnv([make_env])  # Use SyncVectorEnv instead of DummyVecEnv
 env = make_env()
 
-# Create a checkpoint callback that saves the model every 10,000 timesteps
-checkpoint_callback = CheckpointCallback(save_freq=1000, save_path='./ppo_checkpoints/', name_prefix='ppo_model')
 
-# Train with PPO and use the callback
-model = PPO("MultiInputPolicy", env, verbose=1, learning_rate=0.0003, tensorboard_log='./PPO_tensorboard_20250602/')
-model.learn(total_timesteps=100000, callback=checkpoint_callback)
+# PPO
+# # Create a checkpoint callback that saves the model every 10,000 timesteps
+# checkpoint_callback = CheckpointCallback(save_freq=10000, save_path='./ppo_checkpoints/', name_prefix='ppo_model')
+
+# # # Train with PPO and use the callback
+# model = PPO("MultiInputPolicy", env, verbose=1, learning_rate=0.0003, tensorboard_log='./PPO_tensorboard_20250602/')
+# model.learn(total_timesteps=100000, callback=checkpoint_callback)
+
+
+# DQN
+# from stable_baselines3 import DQN
+# from stable_baselines3.common.callbacks import CheckpointCallback
+
+# # Create a checkpoint callback that saves the model every 10,000 timesteps
+# checkpoint_callback = CheckpointCallback(save_freq=10000, save_path='./dqn_checkpoints/', name_prefix='dqn_model')
+
+# # Train with DQN and use the callback
+# # model = DQN("MultiInputPolicy", env, verbose=1, learning_rate=0.0003, tensorboard_log='./DQN_tensorboard_20250602/')
+# model = DQN(
+#     "MultiInputPolicy", env, verbose=1, learning_rate=0.0003,
+#     buffer_size=10_000,  # Reduce from 1_000_000 to 50_000
+#     tensorboard_log='./DQN_tensorboard_20250602/'
+# )
+# model.learn(total_timesteps=100000, callback=checkpoint_callback)
+
+
+# from stable_baselines3 import A2C
+# from stable_baselines3.common.callbacks import CheckpointCallback
+
+# # Create a checkpoint callback that saves the model every 10,000 timesteps
+# checkpoint_callback = CheckpointCallback(save_freq=10000, save_path='./a2c_checkpoints/', name_prefix='a2c_model')
+
+# # Train with A2C and use the callback
+# model = A2C("MultiInputPolicy", env, verbose=1, learning_rate=0.0003, tensorboard_log='./A2C_tensorboard_20250602/')
+# model.learn(total_timesteps=100000, callback=checkpoint_callback)

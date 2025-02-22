@@ -19,8 +19,8 @@ class RAGImprovementEnv(gym.Env):
             "retrieved_chunks_mask": spaces.MultiBinary(self.max_num_documents)  
         })
 
-        
         self.action_space = spaces.Discrete(self.max_num_documents + 1)
+        
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -30,23 +30,19 @@ class RAGImprovementEnv(gym.Env):
         self.documents = text_chunks
         self.num_documents = len(self.documents)
 
-        # Check if text_chunks is empty
         if self.num_documents == 0:
             raise ValueError("text_chunks is empty. The environment requires at least one document.")
 
-        # Initialize document embeddings with zero padding
-        self.document_embeddings = np.zeros((self.max_num_documents, self.embedding_dim), dtype=np.float32)
-        
         computed_embeddings = np.array([self.model.encode(chunk) for chunk in self.documents])
 
-        if computed_embeddings.size == 0:  # Avoid shape mismatch
+        if computed_embeddings.size == 0:
             raise ValueError("Computed embeddings are empty. Check if SentenceTransformer is working properly.")
 
-        self.document_embeddings[:self.num_documents, :computed_embeddings.shape[1]] = computed_embeddings
+        self.document_embeddings = np.zeros((self.max_num_documents, self.embedding_dim), dtype=np.float32)
+        self.document_embeddings[:self.num_documents] = computed_embeddings.reshape(self.num_documents, -1)
 
         self.query_embedding = self.model.encode(query)
 
-        # Compute similarities and pad if necessary
         self.similarities = np.zeros(self.max_num_documents, dtype=np.float32)
         computed_similarities = np.array([
             util.pytorch_cos_sim(self.query_embedding, doc_emb).item() for doc_emb in computed_embeddings
@@ -92,7 +88,6 @@ class RAGImprovementEnv(gym.Env):
             False,  # No early termination
             {}      # ✅ Return an empty dictionary instead of ''
         )
-
 
     def compute_reward(self, action):
         """Reward based on relevance (cosine similarity) and step efficiency."""
