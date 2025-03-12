@@ -86,16 +86,69 @@ class RAGImprovementEnv(gym.Env):
             reward,
             done,
             False,  # No early termination
-            {}      # ✅ Return an empty dictionary instead of ''
+            {}
         )
 
     def compute_reward(self, action):
-        """Reward based on relevance (cosine similarity) and step efficiency."""
-        return self.similarities[action] * (10 - (self.step_count * 2))
+        similarity = self.similarities[action]
+        
+        if similarity < 0.4:
+            return -0.5  # Reduce penalty for bad chunks
+        elif similarity < 0.6:
+            return 0.5  # Small positive reward to encourage exploration
+        else:
+            return similarity * 10  # Good chunks still have strong rewards
 
     def compute_final_reward(self):
-        """Encourage stopping at the right time."""
-        return 10.0
+        good_chunks = sum(1 for i, selected in enumerate(self.retrieved_chunks_mask) if selected and self.similarities[i] >= 0.6)
+    
+        if good_chunks == 0:
+            return -5.0  # Strong penalty if no good chunk was selected
+        else:
+            return 5 + good_chunks * 2 - self.step_count  # Subtract step count to reward efficiency
+
+
+    # def compute_reward(self, action):
+    #     """Reward based on similarity category."""
+    #     similarity = self.similarities[action]
+
+    #     if similarity < 0.4:
+    #         return -2.0  # Bad chunk (Penalty)
+    #     elif similarity < 0.6:
+    #         return 1.0  # Neutral chunk (Small reward)
+    #     else:
+    #         return similarity * 10  # Good chunk (Scaled reward)
+
+    # def compute_final_reward(self):
+    #     """Encourage stopping at the right time based on good selections."""
+    #     good_chunks = sum(1 for i, selected in enumerate(self.retrieved_chunks_mask) if selected and self.similarities[i] >= 0.6)
+        
+    #     if good_chunks == 0:
+    #         return -5.0  # Strong penalty if no good chunk was selected
+    #     else:
+    #         return 5 + good_chunks * 2  # Reward based on good chunk count
+
+
+    # def compute_reward(self, action):
+    #     """Reward based on relevance (cosine similarity) and step efficiency."""
+    #     return self.similarities[action] * (10 - (self.step_count * 2))
+
+    # def compute_final_reward(self):
+    #     """Encourage stopping at the right time."""
+    #     return 10.0
+    
+    
+    # def compute_reward(self, action):
+    #     """Reward based on relevance (cosine similarity) and step efficiency."""
+    #     relevance = self.similarities[action]  # How relevant the chunk is
+    #     step_efficiency = 10 - (self.step_count * 2)  # Penalize actions after more steps
+    #     return relevance * step_efficiency
+
+    # def compute_final_reward(self):
+    #     """Encourage stopping at the right time."""
+    #     # If the model stops after selecting relevant chunks, reward more
+    #     num_relevant_chunks = sum(self.retrieved_chunks_mask)  # Count relevant chunks selected
+    #     return 5 + num_relevant_chunks * 2  # Increase reward based on the number of relevant chunks retrieved
 
     def render(self):
         print(f"Query Embedding: {self.query_embedding}")

@@ -81,12 +81,12 @@ env = make_env()
 # model.learn(total_timesteps=100000, callback=checkpoint_callback)
 
 
-# from stable_baselines3 import A2C
-# from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3 import A2C
+from stable_baselines3.common.callbacks import CheckpointCallback
 
-# # Create a checkpoint callback that saves the model every 10,000 timesteps
-# checkpoint_callback = CheckpointCallback(save_freq=10000, save_path='./a2c_checkpoints/', name_prefix='a2c_model')
+# Create a checkpoint callback that saves the model every 10,000 timesteps
+checkpoint_callback = CheckpointCallback(save_freq=10000, save_path='./a2c_checkpoints/', name_prefix='a2c_model')
 
-# # Train with A2C and use the callback
-# model = A2C("MultiInputPolicy", env, verbose=1, learning_rate=0.0003, tensorboard_log='./A2C_tensorboard_20250602/')
-# model.learn(total_timesteps=100000, callback=checkpoint_callback)
+# Train with A2C and use the callback
+model = A2C("MultiInputPolicy", env, verbose=1, learning_rate=0.0003, tensorboard_log='./A2C_tensorboard_20250602/')
+model.learn(total_timesteps=100000, callback=checkpoint_callback)
