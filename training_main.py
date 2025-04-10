@@ -123,30 +123,95 @@ df_augmented.shape
 
 #     print(f"✅ {algo_name.upper()} training done. Saved to {model_path}\n")
 
-from RankThenStopEnv import RankThenStopEnv
-# from Functions.llm import get_evaluation_from_llm as reward_fn
-from Functions.llm import cached_evaluation_from_llm as reward_fn
-from stable_baselines3 import PPO, A2C, DQN
-from sb3_contrib.ppo_recurrent import RecurrentPPO
-from stable_baselines3.common.callbacks import CheckpointCallback
+# from RankThenStopEnv import RankThenStopEnv
+# # from Functions.llm import get_evaluation_from_llm as reward_fn
+# from Functions.llm import cached_evaluation_from_llm as reward_fn
+# from stable_baselines3 import PPO, A2C, DQN
+# from sb3_contrib.ppo_recurrent import RecurrentPPO
+# from stable_baselines3.common.callbacks import CheckpointCallback
 
+# import os
+
+# # Base output directory
+# base_dir = "./train"
+
+# # Algorithms to run
+# algorithms = {
+#     "a2c": A2C,
+#     "dqn": DQN,
+#     "recurrent_ppo": RecurrentPPO,
+#     "ppo": PPO,
+# }
+
+# for algo_name, AlgoClass in algorithms.items():
+#     print(f"🔁 Training {algo_name.upper()}...")
+
+#     # ✅ Make directories
+#     tensorboard_log_path = os.path.join(base_dir, algo_name, "tensorboard")
+#     checkpoint_path = os.path.join(base_dir, algo_name, "checkpoints")
+#     model_path = os.path.join(base_dir, algo_name, f"{algo_name}_final_model")
+
+#     os.makedirs(tensorboard_log_path, exist_ok=True)
+#     os.makedirs(checkpoint_path, exist_ok=True)
+
+#     # ✅ Fresh env for each algorithm
+#     env = RankThenStopEnv(df=df_augmented, reward_fn=reward_fn)
+
+#     # ✅ Checkpoint callback
+#     checkpoint_callback = CheckpointCallback(
+#         save_freq=1000,
+#         save_path=checkpoint_path,
+#         name_prefix=f"{algo_name}_model"
+#     )
+
+#     # ✅ Model hyperparameters
+#     model_kwargs = {
+#         "policy": "MultiInputLstmPolicy" if algo_name == "recurrent_ppo" else "MultiInputPolicy",
+#         "env": env,
+#         "verbose": 1,
+#         "tensorboard_log": tensorboard_log_path,
+#     }
+
+#     if algo_name in ["ppo", "a2c", "recurrent_ppo"]:
+#         model_kwargs["n_steps"] = 128
+    
+#     # if algo_name in ["a2c"]:
+#     #     model_kwargs["dump_logs"] = 100
+
+#     # ✅ Train
+#     model = AlgoClass(**model_kwargs)
+#     model.learn(total_timesteps=10000, callback=checkpoint_callback)
+
+#     # ✅ Save final model
+#     model.save(model_path)
+
+#     print(f"✅ {algo_name.upper()} training done. Saved to {model_path}\n")
+
+from stable_baselines3 import PPO, A2C, DQN, DDPG, SAC, TD3
+from stable_baselines3.her import HerReplayBuffer
+from stable_baselines3.common.env_util import make_vec_env
+from sb3_contrib.ppo_recurrent import RecurrentPPO
 import os
 
 # Base output directory
 base_dir = "./train"
 
-# Algorithms to run
-algorithms = {
-    "a2c": A2C,
-    "dqn": DQN,
-    "recurrent_ppo": RecurrentPPO,
-    "ppo": PPO,
+# Make sure to adapt policy if needed for SAC/DDPG/TD3 (usually "MlpPolicy")
+all_algorithms = {
+    "a2c": (A2C, "MultiInputPolicy"),
+    "dqn": (DQN, "MultiInputPolicy"),
+    "ppo": (PPO, "MultiInputPolicy"),
+    "recurrent_ppo": (RecurrentPPO, "MultiInputLstmPolicy"),
+    "ddpg": (DDPG, "MultiInputPolicy"),
+    "sac": (SAC, "MultiInputPolicy"),
+    "td3": (TD3, "MultiInputPolicy"),
+    # "her": (DQN, "MultiInputPolicy"),  # HER is usually paired with off-policy algos. Need to add desired goal and achieved goal to the env.
 }
 
-for algo_name, AlgoClass in algorithms.items():
+# Training loop
+for algo_name, (AlgoClass, policy) in all_algorithms.items():
     print(f"🔁 Training {algo_name.upper()}...")
 
-    # ✅ Make directories
     tensorboard_log_path = os.path.join(base_dir, algo_name, "tensorboard")
     checkpoint_path = os.path.join(base_dir, algo_name, "checkpoints")
     model_path = os.path.join(base_dir, algo_name, f"{algo_name}_final_model")
@@ -154,35 +219,51 @@ for algo_name, AlgoClass in algorithms.items():
     os.makedirs(tensorboard_log_path, exist_ok=True)
     os.makedirs(checkpoint_path, exist_ok=True)
 
-    # ✅ Fresh env for each algorithm
     env = RankThenStopEnv(df=df_augmented, reward_fn=reward_fn)
 
-    # ✅ Checkpoint callback
+    # Wrap HER specifically
+    if algo_name == "her":
+        from gymnasium.wrappers import TimeLimit
+
+        def goal_selection_fn(achieved_goal, desired_goal):
+            return achieved_goal  # simple dummy goal selection
+
+        env = gym.wrappers.FlattenObservation(env)
+        env = TimeLimit(env, max_episode_steps=MAX_CHUNKS + 1)
+
+        model = DQN(
+            policy,
+            env,
+            replay_buffer_class=HerReplayBuffer,
+            replay_buffer_kwargs=dict(
+                n_sampled_goal=4,
+                goal_selection_strategy="future",
+                online_sampling=True,
+                max_episode_length=MAX_CHUNKS + 1,
+            ),
+            verbose=1,
+            tensorboard_log=tensorboard_log_path,
+        )
+    else:
+        model_kwargs = {
+            "policy": policy,
+            "env": env,
+            "verbose": 1,
+            "tensorboard_log": tensorboard_log_path,
+        }
+
+        if algo_name in ["ppo", "a2c", "recurrent_ppo"]:
+            model_kwargs["n_steps"] = 128
+
+        model = AlgoClass(**model_kwargs)
+
     checkpoint_callback = CheckpointCallback(
         save_freq=1000,
         save_path=checkpoint_path,
         name_prefix=f"{algo_name}_model"
     )
 
-    # ✅ Model hyperparameters
-    model_kwargs = {
-        "policy": "MultiInputLstmPolicy" if algo_name == "recurrent_ppo" else "MultiInputPolicy",
-        "env": env,
-        "verbose": 1,
-        "tensorboard_log": tensorboard_log_path,
-    }
-
-    if algo_name in ["ppo", "a2c", "recurrent_ppo"]:
-        model_kwargs["n_steps"] = 128
-    
-    # if algo_name in ["a2c"]:
-    #     model_kwargs["dump_logs"] = 100
-
-    # ✅ Train
-    model = AlgoClass(**model_kwargs)
     model.learn(total_timesteps=10000, callback=checkpoint_callback)
-
-    # ✅ Save final model
     model.save(model_path)
 
     print(f"✅ {algo_name.upper()} training done. Saved to {model_path}\n")
