@@ -191,6 +191,13 @@ from stable_baselines3 import PPO, A2C, DQN, DDPG, SAC, TD3
 from stable_baselines3.her import HerReplayBuffer
 from stable_baselines3.common.env_util import make_vec_env
 from sb3_contrib.ppo_recurrent import RecurrentPPO
+from RankThenStopEnv import RankThenStopEnv
+# from Functions.llm import get_evaluation_from_llm as reward_fn
+from Functions.llm import cached_evaluation_from_llm as reward_fn
+from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.env_util import make_vec_env
+from Functions.FlattenObservationWrapper import FlattenDictObservationWrapper
+
 import os
 
 # Base output directory
@@ -198,10 +205,10 @@ base_dir = "./train"
 
 # Make sure to adapt policy if needed for SAC/DDPG/TD3 (usually "MlpPolicy")
 all_algorithms = {
-    "a2c": (A2C, "MultiInputPolicy"),
-    "dqn": (DQN, "MultiInputPolicy"),
-    "ppo": (PPO, "MultiInputPolicy"),
-    "recurrent_ppo": (RecurrentPPO, "MultiInputLstmPolicy"),
+    # "a2c": (A2C, "MultiInputPolicy"),
+    # "dqn": (DQN, "MultiInputPolicy"),
+    # "ppo": (PPO, "MultiInputPolicy"),
+    # "recurrent_ppo": (RecurrentPPO, "MultiInputLstmPolicy"),
     "ddpg": (DDPG, "MultiInputPolicy"),
     "sac": (SAC, "MultiInputPolicy"),
     "td3": (TD3, "MultiInputPolicy"),
@@ -221,49 +228,29 @@ for algo_name, (AlgoClass, policy) in all_algorithms.items():
 
     env = RankThenStopEnv(df=df_augmented, reward_fn=reward_fn)
 
-    # Wrap HER specifically
-    if algo_name == "her":
-        from gymnasium.wrappers import TimeLimit
+    # Flatten observation if required
+    if algo_name in ["ddpg", "sac", "td3"]:
+        env = FlattenObservationWrapper(env)
 
-        def goal_selection_fn(achieved_goal, desired_goal):
-            return achieved_goal  # simple dummy goal selection
+    model_kwargs = {
+        "policy": policy,
+        "env": env,
+        "verbose": 1,
+        "tensorboard_log": tensorboard_log_path,
+    }
 
-        env = gym.wrappers.FlattenObservation(env)
-        env = TimeLimit(env, max_episode_steps=MAX_CHUNKS + 1)
+    if algo_name in ["ppo", "a2c", "recurrent_ppo"]:
+        model_kwargs["n_steps"] = 128
 
-        model = DQN(
-            policy,
-            env,
-            replay_buffer_class=HerReplayBuffer,
-            replay_buffer_kwargs=dict(
-                n_sampled_goal=4,
-                goal_selection_strategy="future",
-                online_sampling=True,
-                max_episode_length=MAX_CHUNKS + 1,
-            ),
-            verbose=1,
-            tensorboard_log=tensorboard_log_path,
-        )
-    else:
-        model_kwargs = {
-            "policy": policy,
-            "env": env,
-            "verbose": 1,
-            "tensorboard_log": tensorboard_log_path,
-        }
-
-        if algo_name in ["ppo", "a2c", "recurrent_ppo"]:
-            model_kwargs["n_steps"] = 128
-
-        model = AlgoClass(**model_kwargs)
+    model = AlgoClass(**model_kwargs)
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=1000,
+        save_freq=1,
         save_path=checkpoint_path,
         name_prefix=f"{algo_name}_model"
     )
 
-    model.learn(total_timesteps=10000, callback=checkpoint_callback)
+    model.learn(total_timesteps=1, callback=checkpoint_callback)
     model.save(model_path)
 
     print(f"✅ {algo_name.upper()} training done. Saved to {model_path}\n")
