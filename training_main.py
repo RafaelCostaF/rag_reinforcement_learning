@@ -42,6 +42,9 @@ def augment_retriever_ranks(df, num_permutations=5):
 # Assuming df already has the retriever_rank column
 df_augmented = augment_retriever_ranks(df, num_permutations=6)
 
+# 3. Shuffle the final augmented DataFrame: Just to make sure different permutations don’t group together when training:
+df_augmented = df_augmented.sample(frac=1).reset_index(drop=True)
+
 df.shape
 df_augmented.shape
 # from RankThenStopEnv import RankThenStopEnv
@@ -59,47 +62,126 @@ df_augmented.shape
 # model = PPO("MultiInputPolicy", env, verbose=1, tensorboard_log="./ppo_tensorboard/", n_steps=128)
 # model.learn(total_timesteps=5000, callback=checkpoint_callback)
 
+
+# from RankThenStopEnv import RankThenStopEnv
+# from Functions.llm import get_evaluation_from_llm as reward_fn
+# from stable_baselines3 import PPO, A2C, DQN
+# from sb3_contrib import QRDQN
+# from stable_baselines3.common.callbacks import CheckpointCallback
+
+# import os
+
+# # Base output directory
+# base_dir = "./train"
+
+# # Algorithms to run
+# algorithms = {
+#     "a2c": A2C,
+#     "dqn": DQN,
+#     "qrdqn": QRDQN,
+#     # "ppo": PPO,
+# }
+
+# for algo_name, AlgoClass in algorithms.items():
+#     print(f"🔁 Training {algo_name.upper()}...")
+
+#     # ✅ Make directories
+#     tensorboard_log_path = os.path.join(base_dir, algo_name, "tensorboard")
+#     checkpoint_path = os.path.join(base_dir, algo_name, "checkpoints")
+#     model_path = os.path.join(base_dir, algo_name, f"{algo_name}_final_model")
+
+#     os.makedirs(tensorboard_log_path, exist_ok=True)
+#     os.makedirs(checkpoint_path, exist_ok=True)
+
+#     # ✅ Fresh env for each algorithm
+#     env = RankThenStopEnv(df=df_augmented, reward_fn=reward_fn)
+
+#     # ✅ Checkpoint callback
+#     checkpoint_callback = CheckpointCallback(
+#         save_freq=1000,
+#         save_path=checkpoint_path,
+#         name_prefix=f"{algo_name}_model"
+#     )
+
+#     # ✅ Model hyperparameters
+#     model_kwargs = {
+#         "policy": "MultiInputPolicy",
+#         "env": env,
+#         "verbose": 1,
+#         "tensorboard_log": tensorboard_log_path,
+#     }
+
+#     if algo_name in ["ppo", "a2c"]:
+#         model_kwargs["n_steps"] = 128
+
+#     # ✅ Train
+#     model = AlgoClass(**model_kwargs)
+#     model.learn(total_timesteps=100, callback=checkpoint_callback)
+
+#     # ✅ Save final model
+#     model.save(model_path)
+
+#     print(f"✅ {algo_name.upper()} training done. Saved to {model_path}\n")
+
 from RankThenStopEnv import RankThenStopEnv
-from Functions.llm import get_evaluation_from_llm as reward_fn
+# from Functions.llm import get_evaluation_from_llm as reward_fn
+from Functions.llm import cached_evaluation_from_llm as reward_fn
 from stable_baselines3 import PPO, A2C, DQN
-from sb3_contrib import QRDQN
+from stable_baselines3.common.monitor import Monitor
+from sb3_contrib.ppo_recurrent import RecurrentPPO
 from stable_baselines3.common.callbacks import CheckpointCallback
+
+import os
+
+# Base output directory
+base_dir = "./train"
 
 # Algorithms to run
 algorithms = {
-    # "ppo": PPO,
     "a2c": A2C,
     "dqn": DQN,
-    "qrdqn": QRDQN,
+    "recurrent_ppo": RecurrentPPO,
+    "ppo": PPO,
 }
 
-# Train each model
 for algo_name, AlgoClass in algorithms.items():
     print(f"🔁 Training {algo_name.upper()}...")
 
-    # Env setup
-    env = RankThenStopEnv(df=df_augmented, reward_fn=reward_fn)
+    # ✅ Make directories
+    tensorboard_log_path = os.path.join(base_dir, algo_name, "tensorboard")
+    checkpoint_path = os.path.join(base_dir, algo_name, "checkpoints")
+    model_path = os.path.join(base_dir, algo_name, f"{algo_name}_final_model")
 
-    # Callback
+    os.makedirs(tensorboard_log_path, exist_ok=True)
+    os.makedirs(checkpoint_path, exist_ok=True)
+
+    # ✅ Fresh env for each algorithm
+    env = RankThenStopEnv(df=df_augmented, reward_fn=reward_fn)
+    env = Monitor(env)  # ⬅️ Wrap the environment with Monitor for better logging
+
+    # ✅ Checkpoint callback
     checkpoint_callback = CheckpointCallback(
         save_freq=1000,
-        save_path=f"./{algo_name}_checkpoints/",
+        save_path=checkpoint_path,
         name_prefix=f"{algo_name}_model"
     )
 
-    # Model
-    model = AlgoClass(
-        "MultiInputPolicy",
-        env,
-        verbose=1,
-        tensorboard_log=f"./{algo_name}_tensorboard/",
-        n_steps=128 if algo_name in ["ppo", "a2c"] else None,  # only for on-policy algorithms
-    )
+    # ✅ Model hyperparameters
+    model_kwargs = {
+        "policy": "MultiInputLstmPolicy" if algo_name == "recurrent_ppo" else "MultiInputPolicy",
+        "env": env,
+        "verbose": 1,
+        "tensorboard_log": tensorboard_log_path,
+    }
 
-    # Learn
-    model.learn(total_timesteps=5000, callback=checkpoint_callback)
+    if algo_name in ["ppo", "a2c", "recurrent_ppo"]:
+        model_kwargs["n_steps"] = 128
 
-    # Optional: Save model
-    model.save(f"./{algo_name}_final_model")
+    # ✅ Train
+    model = AlgoClass(**model_kwargs)
+    model.learn(total_timesteps=10000, callback=checkpoint_callback)
 
-    print(f"✅ {algo_name.upper()} training done.\n")
+    # ✅ Save final model
+    model.save(model_path)
+
+    print(f"✅ {algo_name.upper()} training done. Saved to {model_path}\n")

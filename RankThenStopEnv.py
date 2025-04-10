@@ -9,11 +9,14 @@ MAX_CHUNKS = 3
 STOP_ACTION = MAX_CHUNKS  # special action to stop
 
 class RankThenStopEnv(gym.Env):
-    def __init__(self, df, reward_fn):
+    def __init__(self, df, reward_fn, inference_mode=False):
         super().__init__()
         self.df = df.reset_index(drop=True)
         self.reward_fn = reward_fn
+        self.inference_mode = inference_mode
         self.current_index = -1
+        self.max_steps = MAX_CHUNKS + 1  # or whatever makes sense
+        self.steps_taken = 0
 
         self.observation_space = spaces.Dict({
             "similarities": spaces.Box(low=-1, high=1, shape=(MAX_CHUNKS,), dtype=np.float32),
@@ -46,15 +49,19 @@ class RankThenStopEnv(gym.Env):
         self.selected_indices = []
         self.selected_mask = np.zeros(MAX_CHUNKS, dtype=np.int8)
         self.done = False
+        self.steps_taken = 0  # Reset step counter each episode
 
         return self._get_obs()
 
     def step(self, action):
         # if self.done:
         #     raise RuntimeError("Episode is done. Call reset() to start a new episode.")
-
-        if action == STOP_ACTION or len(self.selected_indices) >= MAX_CHUNKS:
+        self.steps_taken += 1
+        if action == STOP_ACTION or len(self.selected_indices) >= MAX_CHUNKS or self.steps_taken >= self.max_steps:
             self.done = True
+            if self.inference_mode:
+                return self._get_obs(), 0.0, self.done, {}  # no reward
+            
             selected_chunks = [self.chunks[i] for i in self.selected_indices]
 
             llm_score = self.reward_fn(self.query, selected_chunks, self.answer) * 10
