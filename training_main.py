@@ -127,7 +127,6 @@ from RankThenStopEnv import RankThenStopEnv
 # from Functions.llm import get_evaluation_from_llm as reward_fn
 from Functions.llm import cached_evaluation_from_llm as reward_fn
 from stable_baselines3 import PPO, A2C, DQN
-from stable_baselines3.common.monitor import Monitor
 from sb3_contrib.ppo_recurrent import RecurrentPPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 
@@ -157,7 +156,6 @@ for algo_name, AlgoClass in algorithms.items():
 
     # ✅ Fresh env for each algorithm
     env = RankThenStopEnv(df=df_augmented, reward_fn=reward_fn)
-    env = Monitor(env)  # ⬅️ Wrap the environment with Monitor for better logging
 
     # ✅ Checkpoint callback
     checkpoint_callback = CheckpointCallback(
@@ -176,6 +174,9 @@ for algo_name, AlgoClass in algorithms.items():
 
     if algo_name in ["ppo", "a2c", "recurrent_ppo"]:
         model_kwargs["n_steps"] = 128
+    
+    # if algo_name in ["a2c"]:
+    #     model_kwargs["dump_logs"] = 100
 
     # ✅ Train
     model = AlgoClass(**model_kwargs)

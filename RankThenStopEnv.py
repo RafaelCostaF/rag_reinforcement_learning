@@ -1,5 +1,5 @@
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 import spacy
 
@@ -27,7 +27,9 @@ class RankThenStopEnv(gym.Env):
         # Action: choose a chunk index or STOP
         self.action_space = spaces.Discrete(MAX_CHUNKS + 1)
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)  # For reproducibility (optional but encouraged)
+
         self.current_index += 1
         if self.current_index >= len(self.df):
             self.current_index = 0
@@ -49,44 +51,48 @@ class RankThenStopEnv(gym.Env):
         self.selected_indices = []
         self.selected_mask = np.zeros(MAX_CHUNKS, dtype=np.int8)
         self.done = False
-        self.steps_taken = 0  # Reset step counter each episode
+        self.steps_taken = 0
 
-        return self._get_obs()
+        return self._get_obs(), {}
+
 
     def step(self, action):
-        # if self.done:
-        #     raise RuntimeError("Episode is done. Call reset() to start a new episode.")
         self.steps_taken += 1
-        if action == STOP_ACTION or len(self.selected_indices) >= MAX_CHUNKS or self.steps_taken >= self.max_steps:
+
+        terminated = False
+        truncated = False
+
+        if action == STOP_ACTION or len(self.selected_indices) >= MAX_CHUNKS:
+            terminated = True
+        elif self.steps_taken >= self.max_steps:
+            truncated = True
+
+        if terminated or truncated:
             self.done = True
             if self.inference_mode:
-                return self._get_obs(), 0.0, self.done, {}  # no reward
-            
-            selected_chunks = [self.chunks[i] for i in self.selected_indices]
+                return self._get_obs(), 0.0, terminated, truncated, {}
 
+            selected_chunks = [self.chunks[i] for i in self.selected_indices]
             llm_score = self.reward_fn(self.query, selected_chunks, self.answer) * 10
             usage_ratio = len(selected_chunks) / MAX_CHUNKS
             efficiency_bonus = (1 - usage_ratio)
             reward = llm_score + efficiency_bonus
 
-            return self._get_obs(), reward, self.done, {}
+            return self._get_obs(), reward, terminated, truncated, {}
 
         if action in self.selected_indices or action >= len(self.chunks):
-            # Penalize duplicate or invalid action
             reward = -1.0
-            return self._get_obs(), reward, self.done, {}
+            return self._get_obs(), reward, False, False, {}
 
-        # ✅ Valid chunk selection
         self.selected_indices.append(action)
         self.selected_mask[action] = 1
 
         similarity = float(self.similarities[action])
         distance = float(self.distances[action])
-
-        # Reward = similarity / (1 + distance), scaled to approx 10–100
         reward = (similarity / (1 + distance)) * 10
 
-        return self._get_obs(), reward, self.done, {}
+        return self._get_obs(), reward, False, False, {}
+
 
 
 
