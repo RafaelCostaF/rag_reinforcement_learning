@@ -95,71 +95,6 @@ def get_response_from_llm(query: str, chunks: list[str]) -> tuple[str, int, int]
         return "Erro ao gerar resposta.", 0, 0
 
 
-# def get_eval_from_llm_response(query: str, ground_truth: str, prediction: str, model_name: str = "gpt-4-0125-preview") -> tuple[str, int]:
-#     """
-#     Consulta uma LLM para avaliar se a `prediction` está correta em relação ao `ground_truth`.
-
-#     Retorna uma tupla:
-#         (explanation: str, score: int)
-#         Onde score ∈ {0, 1} e -1 para erro de parsing.
-#     """
-#     client = OpenAI()
-#     system_message = INSTRUCTIONS + "\n" + IN_CONTEXT_EXAMPLES
-
-#     # Cria mensagem para o modelo
-#     messages = [
-#         {"role": "system", "content": system_message},
-#         {
-#             "role": "user",
-#             "content": f"Question: {query}\nGround truth: {ground_truth}\nPrediction: {prediction}"
-#         }
-#     ]
-
-#     # Chamada à API
-#     try:
-#         response = client.chat.completions.create(
-#             model=model_name,
-#             messages=messages,
-#             response_format={"type": "json_object"},
-#             temperature=0.0,
-#         )
-#         llm_output = response.choices[0].message.content
-#     except Exception as e:
-#         print(f"Erro ao chamar LLM: {e}")
-#         return "Erro ao consultar LLM", -1
-
-#     # (opcional) salvar log da resposta
-#     os.makedirs("api_responses", exist_ok=True)
-#     file_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S.json")
-#     with open(os.path.join("api_responses", file_name), "w") as f:
-#         json.dump({"messages": messages, "response": llm_output}, f)
-
-#     # Parsing da resposta da LLM
-#     matches = re.findall(r"{([^}]*)}", llm_output)
-#     text = ""
-#     for match in matches:
-#         text = "{" + match + "}"
-
-#     try:
-#         score_match = re.search(r'"score"\s*:\s*(\d+)', text)
-#         if not score_match:
-#             return "Erro ao extrair score", -1
-
-#         score = int(score_match.group(1))
-#         if score not in [0, 1]:
-#             raise ValueError("Score inválido: " + str(score))
-
-#         explanation_match = re.search(r'"explanation"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
-#         explanation = explanation_match.group(1) if explanation_match else text
-
-#         return explanation, score
-
-#     except Exception as e:
-#         print(f"[Parsing Error] Resposta bruta: {llm_output}")
-#         print(f"Erro: {e}")
-#         return llm_output, -1
-
-
 from joblib import Memory
 
 # Set up a cache directory
@@ -168,3 +103,55 @@ memory = Memory(location="./llm_cache", verbose=0)
 @memory.cache
 def cached_evaluation_from_llm(query: str, chunks: list[str], answer: str) -> float:
     return get_evaluation_from_llm(query, chunks, answer)
+
+
+def create_evaluation_prompt(query: str, ground_truth: str, generated_answer: str) -> str:
+    return f"""You are a helpful evaluator. Given a user question, a correct answer, and a model-generated answer, your task is to judge whether the generated answer is correct.
+
+    Here are the possible judgments:
+
+    - "the answer is correct": if the generated answer correctly matches the ground truth in factual content and answers the question.
+    - "the answer is wrong": if the generated answer contains factual errors or contradicts the ground truth.
+    - "information not provided": if the generated answer is vague, unrelated, or avoids answering the question.
+
+    Respond with exactly one of the options above. Do not explain.
+
+    Question: {query}
+
+    Correct Answer: {ground_truth}
+
+    Generated Answer: {generated_answer}
+
+    Your judgment:"""
+
+
+def call_llm(prompt: str) -> str:
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "You are an evaluator that only responds with one of the following: 'the answer is correct', 'the answer is wrong', or 'information not provided'."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=10,
+            stream=False
+        )
+
+        result = response.choices[0].message.content.strip().lower()
+
+        # Normalize the response
+        valid_responses = {
+            "the answer is correct",
+            "the answer is wrong",
+            "information not provided"
+        }
+
+        if result in valid_responses:
+            return result
+        else:
+            print(f"[Warning] Unexpected response: {result}")
+            return "information not provided"
+
+    except Exception as e:
+        print(f"[LLM Error] {e}")
+        return "information not provided"

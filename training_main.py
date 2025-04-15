@@ -196,7 +196,7 @@ from RankThenStopEnv import RankThenStopEnv
 from Functions.llm import cached_evaluation_from_llm as reward_fn
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
-from Functions.FlattenObservationWrapper import FlattenDictObservationWrapper
+from Functions.FlattenObservationWrapper import FlattenDictObservationWrapper, DiscretizeActionWrapper
 
 import os
 
@@ -205,13 +205,13 @@ base_dir = "./train"
 
 # Make sure to adapt policy if needed for SAC/DDPG/TD3 (usually "MlpPolicy")
 all_algorithms = {
-    # "a2c": (A2C, "MultiInputPolicy"),
-    # "dqn": (DQN, "MultiInputPolicy"),
-    # "ppo": (PPO, "MultiInputPolicy"),
-    # "recurrent_ppo": (RecurrentPPO, "MultiInputLstmPolicy"),
-    "ddpg": (DDPG, "MultiInputPolicy"),
-    "sac": (SAC, "MultiInputPolicy"),
-    "td3": (TD3, "MultiInputPolicy"),
+    "a2c": (A2C, "MultiInputPolicy"),
+    "dqn": (DQN, "MultiInputPolicy"),
+    "ppo": (PPO, "MultiInputPolicy"),
+    "recurrent_ppo": (RecurrentPPO, "MultiInputLstmPolicy"),
+    # "ddpg": (DDPG, "MultiInputPolicy"),
+    # "sac": (SAC, "MultiInputPolicy"),
+    # "td3": (TD3, "MultiInputPolicy"),
     # "her": (DQN, "MultiInputPolicy"),  # HER is usually paired with off-policy algos. Need to add desired goal and achieved goal to the env.
 }
 
@@ -228,10 +228,6 @@ for algo_name, (AlgoClass, policy) in all_algorithms.items():
 
     env = RankThenStopEnv(df=df_augmented, reward_fn=reward_fn)
 
-    # Flatten observation if required
-    if algo_name in ["ddpg", "sac", "td3"]:
-        env = FlattenObservationWrapper(env)
-
     model_kwargs = {
         "policy": policy,
         "env": env,
@@ -245,12 +241,12 @@ for algo_name, (AlgoClass, policy) in all_algorithms.items():
     model = AlgoClass(**model_kwargs)
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=1,
+        save_freq=1000,
         save_path=checkpoint_path,
         name_prefix=f"{algo_name}_model"
     )
 
-    model.learn(total_timesteps=1, callback=checkpoint_callback)
+    model.learn(total_timesteps=10000, callback=checkpoint_callback)
     model.save(model_path)
 
     print(f"✅ {algo_name.upper()} training done. Saved to {model_path}\n")

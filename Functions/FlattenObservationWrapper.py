@@ -36,3 +36,24 @@ class FlattenDictObservationWrapper(gym.ObservationWrapper):
             val = val.astype(np.float32)
             obs.append(val.flatten())
         return np.concatenate(obs, axis=0)
+
+import gymnasium as gym
+import numpy as np
+from gymnasium.spaces import Box, Discrete
+
+
+class DiscretizeActionWrapper(gym.ActionWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+        assert isinstance(env.action_space, Discrete), "This wrapper only works with Discrete action spaces"
+        self.n_actions = env.action_space.n
+
+        # New action space is continuous, normalized to [0, 1]
+        self.action_space = Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)
+
+    def action(self, action):
+        # Convert from continuous to discrete
+        continuous_value = np.clip(action[0], 0.0, 1.0)
+        discrete_action = int(continuous_value * self.n_actions)
+        return min(discrete_action, self.n_actions - 1)
