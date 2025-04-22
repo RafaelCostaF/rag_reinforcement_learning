@@ -8,7 +8,7 @@ import json
 
 
 # Setup DeepSeek API
-os.environ["OPENAI_API_KEY"] = "sk-00691242394046909d398f327080db20"
+os.environ["OPENAI_API_KEY"] = "sk-chave_qualquer"
 os.environ["OPENAI_API_BASE"] = "https://api.deepseek.com/v1"
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"], base_url="https://api.deepseek.com")
 
